@@ -1,0 +1,77 @@
+# Hermes-4.3-36B-FP8 Docker Compose
+# Optimized for single GPU deployment (32-48GB VRAM)
+#
+# Usage:
+#   docker compose up          # Single GPU (default)
+#   docker compose up -d       # Run in background
+#
+# Environment Variables:
+#   GPU_ID=0                   # GPU device ID (default: 0)
+#   MAX_MODEL_LEN=16384        # Context length (default: 16384)
+#   GPU_MEMORY_UTIL=0.90       # GPU memory utilization (default: 0.90)
+
+services:
+  hermes-43-36b-fp8:
+    image: vllm/vllm-openai:v0.12.0
+    container_name: hermes-43-36b-fp8
+    restart: unless-stopped
+
+    ports:
+      - "8000:8000"
+
+    volumes:
+      - hf_cache:/root/.cache/huggingface
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["${GPU_ID:-0}"]
+              capabilities: [gpu]
+
+    shm_size: "16gb"
+
+    command:
+      - --model
+      - Doradus/Hermes-4.3-36B-FP8
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8000"
+      - --tensor-parallel-size
+      - "1"
+      - --max-model-len
+      - "${MAX_MODEL_LEN:-16384}"
+      - --gpu-memory-utilization
+      - "${GPU_MEMORY_UTIL:-0.90}"
+      - --dtype
+      - auto
+      - --trust-remote-code
+      - --served-model-name
+      - hermes-43-36b-fp8
+      - --enable-chunked-prefill
+      - --max-num-seqs
+      - "16"
+      - --max-num-batched-tokens
+      - "8192"
+      # Tool calling support (Hermes native format)
+      - --tool-call-parser
+      - hermes
+      - --enable-auto-tool-choice
+
+    environment:
+      - VLLM_ATTENTION_BACKEND=FLASHINFER
+      - HF_HOME=/root/.cache/huggingface
+      - TRANSFORMERS_CACHE=/root/.cache/huggingface
+      - HUGGINGFACE_HUB_CACHE=/root/.cache/huggingface
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+volumes:
+  hf_cache:
